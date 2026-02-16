@@ -5,20 +5,27 @@ import { useApp } from "./useApp";
 const {
   packs, installedIds, currentView, selectedPack, searchQuery, filterTag,
   filteredPacks, allTags,
-  apiKey, modelId, baseUrl, reasoningEnabled,
   settingsState, settingsContentVisible,
   settingsBtnRef, settingsTitleRef, settingsBtnRect, settingsTitleRect,
-  editPack, generating,
+  editPack,
   deletePack, toggleInstall,
   startCreate, startEdit, addRule, removeRule, addTag, removeTag,
   saveCurrentPack, viewPack, goBack,
-  generateRules,
   exportForMemoChat, exportPack, importPack,
   openSettings, closeSettings,
+  // Local / Remote toggle
+  viewMode, loadingRemote,
+  // Channels (each = a backend server)
+  channels, selectedChannelId, selectedChannel,
+  publishing, publishError, publishSuccess,
+  newChannelUrl, newChannelToken, addingChannel, addChannelError,
+  addChannel, removeChannel, updateChannelToken, registerOnChannel,
+  publishPack, openPublish, openChannels,
 } = useApp();
 
 const tagInput = ref("");
-const aiTopic = ref("");
+const regUsername = ref("");
+const regDisplayName = ref("");
 
 function handleAddTag() {
   if (tagInput.value.trim()) {
@@ -27,9 +34,9 @@ function handleAddTag() {
   }
 }
 
-function handleGenerate() {
-  if (aiTopic.value.trim()) {
-    generateRules(aiTopic.value);
+function handleRegister() {
+  if (regUsername.value.trim() && selectedChannelId.value) {
+    registerOnChannel(selectedChannelId.value, regUsername.value.trim(), regDisplayName.value.trim() || regUsername.value.trim());
   }
 }
 </script>
@@ -37,7 +44,17 @@ function handleGenerate() {
 <template>
   <main class="app-container">
     <header class="app-header" data-tauri-drag-region>
-      <h1 data-tauri-drag-region>MemoMarket</h1>
+      <div class="header-left">
+        <h1 data-tauri-drag-region>MemoMarket</h1>
+        <div class="mode-toggle">
+          <span class="mode-label" :class="{ active: viewMode === 'local' }">Local</span>
+          <button class="toggle-switch" :class="{ remote: viewMode === 'remote' }" @click="viewMode = viewMode === 'local' ? 'remote' : 'local'">
+            <span class="toggle-knob"></span>
+          </button>
+          <span class="mode-label" :class="{ active: viewMode === 'remote' }">Remote</span>
+          <span v-if="loadingRemote" class="loading-dot"></span>
+        </div>
+      </div>
       <div class="header-actions">
         <button class="action-btn" @click="importPack">Import</button>
         <button class="action-btn primary" @click="startCreate">+ New Pack</button>
@@ -65,7 +82,9 @@ function handleGenerate() {
       </div>
 
       <div v-if="filteredPacks.length === 0" class="empty-state">
-        <p v-if="packs.length === 0">No rule packs yet. Create one or import from MemoChat!</p>
+        <p v-if="viewMode === 'remote' && channels.length === 0">No channels configured. Add a backend server first.</p>
+        <p v-else-if="viewMode === 'remote' && loadingRemote">Loading remote packs...</p>
+        <p v-else-if="packs.length === 0 && viewMode === 'local'">No rule packs yet. Create one or import from MemoChat!</p>
         <p v-else>No packs match your search.</p>
       </div>
 
@@ -73,13 +92,14 @@ function handleGenerate() {
         <div v-for="pack in filteredPacks" :key="pack.id" class="pack-card" @click="viewPack(pack)">
           <div class="pack-card-header">
             <span class="pack-name">{{ pack.name || 'Untitled' }}</span>
-            <span class="install-badge" :class="{ installed: installedIds.includes(pack.id) }">
+            <span v-if="viewMode === 'local'" class="install-badge" :class="{ installed: installedIds.includes(pack.id) }">
               {{ installedIds.includes(pack.id) ? '✓' : '' }}
             </span>
           </div>
           <p class="pack-desc">{{ pack.description || 'No description' }}</p>
           <div class="pack-meta">
             <span v-if="pack.author" class="pack-author">{{ pack.author }}</span>
+            <span v-if="(pack as any)._channelName" class="pack-channel-badge">{{ (pack as any)._channelName }}</span>
             <span class="pack-rules-count">{{ pack.rules.length }} rules</span>
           </div>
           <div v-if="pack.tags.length > 0" class="pack-tags">
@@ -96,6 +116,7 @@ function handleGenerate() {
         <div class="detail-actions">
           <button class="action-btn" @click="exportForMemoChat(selectedPack!)">Export for MemoChat</button>
           <button class="action-btn" @click="exportPack(selectedPack!)">Export Pack</button>
+          <button class="action-btn publish-btn" @click="openPublish(selectedPack!)">Publish</button>
           <button class="action-btn" @click="startEdit(selectedPack!)">Edit</button>
           <button
             class="action-btn" :class="{ primary: !installedIds.includes(selectedPack!.id) }"
@@ -136,15 +157,6 @@ function handleGenerate() {
         <button class="action-btn primary" @click="saveCurrentPack">Save Pack</button>
       </div>
       <div class="create-content">
-        <div class="ai-section">
-          <h3>AI Generate</h3>
-          <div class="ai-row">
-            <input type="text" v-model="aiTopic" placeholder="Describe what rules you need..." class="ai-input" @keydown.enter="handleGenerate" />
-            <button class="action-btn primary" @click="handleGenerate" :disabled="generating || !aiTopic.trim()">
-              {{ generating ? 'Generating...' : 'Generate' }}
-            </button>
-          </div>
-        </div>
         <div class="form-group">
           <label>Pack Name</label>
           <input type="text" v-model="editPack.name" placeholder="My Rule Pack" />
@@ -188,6 +200,85 @@ function handleGenerate() {
       </div>
     </div>
 
+    <!-- Publish View -->
+    <div v-if="currentView === 'publish' && selectedPack" class="publish-view">
+      <div class="detail-header">
+        <button class="back-btn" @click="goBack">&larr; Back</button>
+        <button class="action-btn" @click="openSettings">Manage Channels</button>
+      </div>
+      <div class="publish-content">
+        <h2>Publish "{{ selectedPack.name }}"</h2>
+
+        <!-- Channel Selection -->
+        <div class="publish-section">
+          <h3>Select Channel</h3>
+          <div v-if="channels.length === 0" class="empty-channel">
+            <p>No channels configured. Add a backend server in Settings first.</p>
+            <button class="action-btn primary" @click="openSettings">Open Settings</button>
+          </div>
+          <div v-else class="channel-select">
+            <button
+              v-for="ch in channels" :key="ch.id"
+              class="channel-pill"
+              :class="{ active: selectedChannelId === ch.id }"
+              @click="selectedChannelId = ch.id"
+            >
+              <span class="channel-pill-name">{{ ch.name }}</span>
+              <span class="channel-pill-url">{{ ch.url }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Selected channel details -->
+        <div v-if="selectedChannel" class="publish-section">
+          <h3>{{ selectedChannel.name }}</h3>
+          <p v-if="selectedChannel.description" class="channel-desc">{{ selectedChannel.description }}</p>
+          <p class="channel-url">{{ selectedChannel.url }}</p>
+          <div v-if="!selectedChannel.token" class="register-section">
+            <p class="hint">No token for this channel. Register or paste a token:</p>
+            <div class="form-group">
+              <label>Token</label>
+              <input type="password" :value="selectedChannel.token" @input="updateChannelToken(selectedChannel!.id, ($event.target as HTMLInputElement).value)" placeholder="Paste auth token..." />
+            </div>
+            <div class="settings-divider"></div>
+            <p class="hint">Or register a new account:</p>
+            <div class="form-row">
+              <div class="form-group"><label>Username</label><input type="text" v-model="regUsername" placeholder="username" /></div>
+              <div class="form-group"><label>Display Name</label><input type="text" v-model="regDisplayName" placeholder="Your Name" /></div>
+            </div>
+            <button class="action-btn primary" @click="handleRegister" :disabled="!regUsername.trim()">Register</button>
+          </div>
+          <div v-else class="token-status">
+            <span class="token-ok">Authenticated</span>
+          </div>
+        </div>
+
+        <!-- Publish Action -->
+        <div class="publish-action">
+          <div v-if="publishError" class="publish-msg error">{{ publishError }}</div>
+          <div v-if="publishSuccess" class="publish-msg success">{{ publishSuccess }}</div>
+          <button
+            class="action-btn primary publish-go"
+            @click="publishPack(selectedPack!)"
+            :disabled="publishing || !selectedChannel || !selectedChannel?.token"
+          >{{ publishing ? 'Publishing...' : 'Publish' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Channels View (redirect to Settings) -->
+    <div v-if="currentView === 'channels'" class="channels-view">
+      <div class="detail-header">
+        <button class="back-btn" @click="goBack">&larr; Back</button>
+        <button class="action-btn primary" @click="openSettings">Open Settings</button>
+      </div>
+      <div class="channels-content">
+        <div class="empty-state">
+          <p>Channel management has moved to Settings.</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Settings Panel -->
     <div
       v-if="settingsState !== 'closed'"
@@ -205,20 +296,48 @@ function handleGenerate() {
           <h2 ref="settingsTitleRef" :class="{ 'title-hidden': settingsState === 'expanding' || settingsState === 'collapsing' }">Settings</h2>
           <button class="close-btn" @click="closeSettings">&times;</button>
         </div>
-        <div class="form-group">
-          <label>Base URL</label>
-          <input type="text" v-model="baseUrl" placeholder="https://api.openai.com/v1" />
-        </div>
-        <div class="form-group">
-          <label>API Key</label>
-          <input type="password" v-model="apiKey" placeholder="sk-..." />
-        </div>
-        <div class="form-group">
-          <div class="label-row">
-            <label>Model ID</label>
-            <button type="button" class="reasoning-pill" :class="{ active: reasoningEnabled }" @click="reasoningEnabled = !reasoningEnabled">Reasoning</button>
+
+        <!-- Channels Configuration -->
+        <div class="settings-section">
+          <h3>Channels</h3>
+          <p class="channels-hint">Each channel is a backend server. Add server URLs to browse and publish packs.</p>
+
+          <!-- Add channel form -->
+          <div class="new-channel-form">
+            <div class="form-group">
+              <label>Server URL</label>
+              <input type="text" v-model="newChannelUrl" placeholder="http://localhost:8080" @keydown.enter="addChannel" />
+            </div>
+            <div class="form-group">
+              <label>Auth Token (optional)</label>
+              <input type="password" v-model="newChannelToken" placeholder="Token if you already have one" />
+            </div>
+            <div v-if="addChannelError" class="publish-msg error">{{ addChannelError }}</div>
+            <button class="action-btn primary" @click="addChannel" :disabled="addingChannel || !newChannelUrl.trim()">
+              {{ addingChannel ? 'Connecting...' : '+ Add Channel' }}
+            </button>
           </div>
-          <input type="text" v-model="modelId" placeholder="" />
+
+          <div class="settings-divider"></div>
+
+          <!-- Channel list -->
+          <div v-if="channels.length === 0" class="empty-state" style="padding: 12px 0;">
+            <p>No channels yet. Add a server URL above.</p>
+          </div>
+          <div class="channel-list">
+            <div v-for="ch in channels" :key="ch.id" class="channel-card">
+              <div class="channel-card-header">
+                <span class="channel-card-name">{{ ch.name }}</span>
+                <button class="remove-btn" @click="removeChannel(ch.id)">&times;</button>
+              </div>
+              <p class="channel-card-url">{{ ch.url }}</p>
+              <p v-if="ch.description" class="channel-card-desc">{{ ch.description }}</p>
+              <div class="channel-card-token">
+                <span v-if="ch.token" class="token-ok">Authenticated</span>
+                <span v-else class="token-missing">No token</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

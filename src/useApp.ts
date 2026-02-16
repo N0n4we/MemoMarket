@@ -1,6 +1,11 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { chatCompletion } from "./llm";
+import {
+  type Channel,
+  fetchServerInfo, registerOnServer,
+  publishRulePack as apiPublishRulePack,
+  listRulePacks as apiListRulePacks,
+} from "./api";
 
 export interface MemoRule {
   title: string;
@@ -20,7 +25,7 @@ export interface RulePack {
   updatedAt: string;
 }
 
-export type View = "browse" | "create" | "detail" | "settings";
+export type View = "browse" | "create" | "detail" | "settings" | "publish" | "channels";
 export type PanelState = "closed" | "expanding" | "expanded" | "collapsing";
 
 function generateId() {
@@ -51,10 +56,10 @@ function fromBackend(raw: any): RulePack {
     id: raw.id,
     name: raw.name,
     description: raw.description,
-    author: raw.author,
+    author: raw.author || raw.author_name || "",
     version: raw.version,
     systemPrompt: raw.system_prompt || "",
-    rules: (raw.rules || []).map((r: any) => ({ title: r.title, updateRule: r.update_rule })),
+    rules: (raw.rules || []).map((r: any) => ({ title: r.title, updateRule: r.update_rule || r.updateRule })),
     tags: raw.tags || [],
     createdAt: raw.created_at || "",
     updatedAt: raw.updated_at || "",
@@ -70,10 +75,6 @@ export function useApp() {
   const filterTag = ref("");
 
   // Settings
-  const apiKey = ref("");
-  const modelId = ref("");
-  const baseUrl = ref("");
-  const reasoningEnabled = ref(false);
   const settingsState = ref<PanelState>("closed");
   const settingsContentVisible = ref(false);
   const settingsBtnRef = ref<HTMLButtonElement | null>(null);
@@ -86,7 +87,24 @@ export function useApp() {
     id: "", name: "", description: "", author: "", version: "1.0.0",
     systemPrompt: "", rules: [], tags: [], createdAt: "", updatedAt: "",
   });
-  const generating = ref(false);
+
+  // Channels — each channel = one backend server URL + token
+  const channels = ref<Channel[]>([]);
+  const selectedChannelId = ref("");
+  const publishing = ref(false);
+  const publishError = ref("");
+  const publishSuccess = ref("");
+
+  // New channel form
+  const newChannelUrl = ref("");
+  const newChannelToken = ref("");
+  const addingChannel = ref(false);
+  const addChannelError = ref("");
+
+  // Local / Remote toggle
+  const viewMode = ref<"local" | "remote">("local");
+  const remotePacks = ref<RulePack[]>([]);
+  const loadingRemote = ref(false);
 
   onMounted(() => {
     loadConfig();
@@ -96,12 +114,19 @@ export function useApp() {
 
   async function loadConfig() {
     try {
-      const config = await invoke<{ api_key: string; model_id: string; base_url: string; reasoning_enabled: boolean }>("load_config");
+      const config = await invoke<{
+        api_key: string; model_id: string; base_url: string;
+        reasoning_enabled: boolean; channels_json: string;
+      }>("load_config");
       if (config) {
-        apiKey.value = config.api_key;
-        if (config.model_id) modelId.value = config.model_id;
-        if (config.base_url) baseUrl.value = config.base_url;
-        reasoningEnabled.value = config.reasoning_enabled;
+        if (config.channels_json) {
+          try {
+            channels.value = JSON.parse(config.channels_json);
+            if (channels.value.length > 0 && !selectedChannelId.value) {
+              selectedChannelId.value = channels.value[0].id;
+            }
+          } catch { channels.value = []; }
+        }
       }
     } catch (e) {
       console.error("Failed to load config:", e);
@@ -111,17 +136,19 @@ export function useApp() {
   async function saveConfig() {
     try {
       await invoke("save_config", {
-        apiKey: apiKey.value,
-        modelId: modelId.value,
-        baseUrl: baseUrl.value,
-        reasoningEnabled: reasoningEnabled.value,
+        apiKey: "",
+        modelId: "",
+        baseUrl: "",
+        reasoningEnabled: false,
+        channelsJson: JSON.stringify(channels.value),
       });
     } catch (e) {
       console.error("Failed to save config:", e);
     }
   }
 
-  watch([apiKey, modelId, baseUrl, reasoningEnabled], () => { saveConfig(); });
+  // Save channels when they change
+  watch(channels, () => { saveConfig(); }, { deep: true });
 
   async function loadPacks() {
     try {
@@ -177,7 +204,7 @@ export function useApp() {
   }
 
   const filteredPacks = computed(() => {
-    let result = packs.value;
+    let result = viewMode.value === "remote" ? remotePacks.value : packs.value;
     if (searchQuery.value.trim()) {
       const q = searchQuery.value.toLowerCase();
       result = result.filter(p =>
@@ -194,8 +221,9 @@ export function useApp() {
   });
 
   const allTags = computed(() => {
+    const source = viewMode.value === "remote" ? remotePacks.value : packs.value;
     const tags = new Set<string>();
-    packs.value.forEach(p => p.tags.forEach(t => tags.add(t)));
+    source.forEach(p => p.tags.forEach(t => tags.add(t)));
     return Array.from(tags).sort();
   });
 
@@ -245,44 +273,6 @@ export function useApp() {
   function goBack() {
     currentView.value = "browse";
     selectedPack.value = null;
-  }
-
-  // AI-powered rule generation
-  async function generateRules(topic: string) {
-    if (!apiKey.value || !modelId.value || generating.value) return;
-    generating.value = true;
-
-    const prompt = `You are a MemoChat rule pack designer. Given a topic, generate a set of memo rules.
-
-Topic: ${topic}
-
-Generate a JSON object with:
-- "name": short pack name
-- "description": one-line description
-- "systemPrompt": a system prompt for the AI assistant
-- "rules": array of {"title": "rule title", "updateRule": "instruction for how to update this memo"}
-- "tags": array of relevant tags
-
-Output ONLY valid JSON, no markdown fences.`;
-
-    try {
-      const config = { baseUrl: baseUrl.value, apiKey: apiKey.value, modelId: modelId.value, reasoningEnabled: reasoningEnabled.value };
-      const result = await chatCompletion([{ role: "user", content: prompt }], config);
-      const cleaned = result.content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      const parsed = JSON.parse(cleaned);
-
-      editPack.value.name = parsed.name || editPack.value.name;
-      editPack.value.description = parsed.description || "";
-      editPack.value.systemPrompt = parsed.systemPrompt || "";
-      editPack.value.rules = (parsed.rules || []).map((r: any) => ({
-        title: r.title || "", updateRule: r.updateRule || r.update_rule || "",
-      }));
-      editPack.value.tags = parsed.tags || [];
-    } catch (e) {
-      console.error("AI generation failed:", e);
-    } finally {
-      generating.value = false;
-    }
   }
 
   // Export pack as MemoChat-compatible JSON
@@ -385,18 +375,160 @@ Output ONLY valid JSON, no markdown fences.`;
     setTimeout(() => { settingsState.value = "closed"; }, 400);
   }
 
+  // ---- Remote packs: fetch from all channels ----
+
+  async function fetchRemotePacks() {
+    if (channels.value.length === 0) {
+      remotePacks.value = [];
+      return;
+    }
+    loadingRemote.value = true;
+    try {
+      const results = await Promise.allSettled(
+        channels.value.map(async (ch) => {
+          const res = await apiListRulePacks(ch.url, { limit: 100 });
+          return (res.items || []).map((raw: any) => ({
+            ...fromBackend(raw),
+            _channelName: ch.name,
+            _channelUrl: ch.url,
+          }));
+        })
+      );
+      const all: RulePack[] = [];
+      for (const r of results) {
+        if (r.status === "fulfilled") all.push(...r.value);
+      }
+      remotePacks.value = all;
+    } catch (e) {
+      console.error("Failed to fetch remote packs:", e);
+    } finally {
+      loadingRemote.value = false;
+    }
+  }
+
+  // Auto-fetch remote packs when switching to remote mode
+  watch(viewMode, (mode) => {
+    if (mode === "remote") fetchRemotePacks();
+  });
+
+  // ---- Channel management (each channel = a backend server) ----
+
+  const selectedChannel = computed(() =>
+    channels.value.find(c => c.id === selectedChannelId.value) || null
+  );
+
+  async function addChannel() {
+    const url = newChannelUrl.value.trim().replace(/\/$/, "");
+    if (!url) return;
+    addingChannel.value = true;
+    addChannelError.value = "";
+    try {
+      // Fetch server info to get name
+      const info = await fetchServerInfo(url);
+      const ch: Channel = {
+        id: `ch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        url,
+        token: newChannelToken.value.trim(),
+        name: info.name || url,
+        description: info.description || "",
+      };
+      channels.value.push(ch);
+      if (!selectedChannelId.value) {
+        selectedChannelId.value = ch.id;
+      }
+      newChannelUrl.value = "";
+      newChannelToken.value = "";
+    } catch (e: any) {
+      addChannelError.value = e.message || "Failed to connect to server";
+    } finally {
+      addingChannel.value = false;
+    }
+  }
+
+  function removeChannel(id: string) {
+    channels.value = channels.value.filter(c => c.id !== id);
+    if (selectedChannelId.value === id) {
+      selectedChannelId.value = channels.value.length > 0 ? channels.value[0].id : "";
+    }
+  }
+
+  function updateChannelToken(id: string, token: string) {
+    const ch = channels.value.find(c => c.id === id);
+    if (ch) ch.token = token;
+  }
+
+  async function registerOnChannel(channelId: string, username: string, displayName: string) {
+    const ch = channels.value.find(c => c.id === channelId);
+    if (!ch) return;
+    publishError.value = "";
+    try {
+      const user = await registerOnServer(ch.url, username, displayName);
+      ch.token = user.token || "";
+    } catch (e: any) {
+      publishError.value = e.message || "Registration failed";
+    }
+  }
+
+  async function publishPack(pack: RulePack) {
+    const ch = selectedChannel.value;
+    if (!ch) {
+      publishError.value = "Select a channel first";
+      return;
+    }
+    if (!ch.token) {
+      publishError.value = "No auth token for this channel. Register or add a token first.";
+      return;
+    }
+    publishing.value = true;
+    publishError.value = "";
+    publishSuccess.value = "";
+    try {
+      await apiPublishRulePack(ch.url, ch.token, {
+        name: pack.name,
+        description: pack.description,
+        version: pack.version,
+        system_prompt: pack.systemPrompt,
+        rules: pack.rules.map(r => ({ title: r.title, update_rule: r.updateRule })),
+        tags: pack.tags,
+      });
+      publishSuccess.value = `"${pack.name}" published to ${ch.name}!`;
+    } catch (e: any) {
+      publishError.value = e.message || "Publish failed";
+    } finally {
+      publishing.value = false;
+    }
+  }
+
+  function openPublish(pack: RulePack) {
+    selectedPack.value = pack;
+    publishError.value = "";
+    publishSuccess.value = "";
+    currentView.value = "publish";
+  }
+
+  function openChannels() {
+    addChannelError.value = "";
+    currentView.value = "channels";
+  }
+
   return {
     packs, installedIds, currentView, selectedPack, searchQuery, filterTag,
     filteredPacks, allTags,
-    apiKey, modelId, baseUrl, reasoningEnabled,
     settingsState, settingsContentVisible,
     settingsBtnRef, settingsTitleRef, settingsBtnRect, settingsTitleRect,
-    editPack, generating,
+    editPack,
     loadPacks, savePack, deletePack, toggleInstall,
     startCreate, startEdit, addRule, removeRule, addTag, removeTag,
     saveCurrentPack, viewPack, goBack,
-    generateRules,
     exportForMemoChat, exportPack, importPack,
     openSettings, closeSettings,
+    // Local / Remote toggle
+    viewMode, remotePacks, loadingRemote, fetchRemotePacks,
+    // Channels (each = a backend server)
+    channels, selectedChannelId, selectedChannel,
+    publishing, publishError, publishSuccess,
+    newChannelUrl, newChannelToken, addingChannel, addChannelError,
+    addChannel, removeChannel, updateChannelToken, registerOnChannel,
+    publishPack, openPublish, openChannels,
   };
 }
