@@ -53,6 +53,11 @@ export async function chatCompletion(
         throw new Error(`API Error: ${errorText}`);
       }
 
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("text/event-stream") && !contentType.includes("application/json")) {
+        throw new Error(`Unexpected response type: ${contentType}. Check your Base URL.`);
+      }
+
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
