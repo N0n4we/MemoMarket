@@ -1,4 +1,4 @@
-module github.com/memomarket/backend
+module github.com/n0n4we/memomarket
 
 go 1.22
 
