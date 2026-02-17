@@ -318,28 +318,15 @@ export function useApp() {
     }
   }
 
-  // Import from MemoChat (reads current RulePack + MemoPack from MemoChat)
+  // Import from MemoChat (reads current memo-pack.json from MemoChat)
   async function importFromMemoChat() {
     try {
-      const data = await invoke<{ rules: any; memos: any }>("import_from_memochat");
-      const now = nowISO();
-      const pack: RulePack = {
-        id: generateId(),
-        name: "Imported from MemoChat",
-        description: "Current rules and memos from MemoChat",
-        author: "",
-        version: "1.0.0",
-        systemPrompt: data.rules?.systemPrompt || "",
-        rules: (data.rules?.rules || []).map((r: any) => ({ title: r.title, updateRule: r.updateRule })),
-        memos: (data.memos || []).map((m: any) => ({ title: m.title, content: m.content })),
-        tags: ["imported", "memochat"],
-        createdAt: now,
-        updatedAt: now,
-      };
+      const pack = await invoke<RulePack>("import_from_memochat");
       await savePack(pack);
       await loadPacks();
     } catch (e) {
       console.error("Failed to import from MemoChat:", e);
+      alert(`Failed to import from MemoChat: ${e}`);
     }
   }
 

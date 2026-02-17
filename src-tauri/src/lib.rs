@@ -22,6 +22,12 @@ pub struct MemoRule {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct Memo {
+    pub title: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RulePack {
     pub id: String,
     pub name: String,
@@ -30,6 +36,8 @@ pub struct RulePack {
     pub version: String,
     pub system_prompt: String,
     pub rules: Vec<MemoRule>,
+    #[serde(default)]
+    pub memos: Vec<Memo>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
@@ -191,19 +199,52 @@ fn export_for_memochat(pack: RulePack) -> String {
     serde_json::to_string_pretty(&memochat_format).unwrap_or_default()
 }
 
-/// Import from MemoChat rules JSON format
+/// Import from MemoChat memo-pack.json file
 #[tauri::command]
-fn import_from_memochat(json: String) -> Result<RulePack, String> {
-    let val: Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    let system_prompt = val["systemPrompt"].as_str().unwrap_or("").to_string();
+fn import_from_memochat(app: AppHandle) -> Result<RulePack, String> {
+    // Get MemoChat config directory
+    let memochat_config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("Failed to get parent directory")?
+        .join("com.memochat.app");
+
+    let memo_pack_path = memochat_config_dir.join("memo-pack.json");
+
+    if !memo_pack_path.exists() {
+        return Err("MemoChat memo-pack.json not found. Please make sure MemoChat is installed and has been run at least once.".to_string());
+    }
+
+    let json = fs::read_to_string(&memo_pack_path)
+        .map_err(|e| format!("Failed to read memo-pack.json: {}", e))?;
+
+    let val: Value = serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse memo-pack.json: {}", e))?;
+
     let rules = val["rules"]
         .as_array()
         .map(|arr| {
             arr.iter()
                 .filter_map(|r| {
                     Some(MemoRule {
-                        title: r["title"].as_str()?.to_string(),
-                        update_rule: r["updateRule"].as_str()?.to_string(),
+                        title: r["description"].as_str()?.to_string(),
+                        update_rule: r["update_rule"].as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let memos = val["memos"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    Some(Memo {
+                        title: m["title"].as_str()?.to_string(),
+                        content: m["content"].as_str()?.to_string(),
                     })
                 })
                 .collect()
@@ -214,12 +255,13 @@ fn import_from_memochat(json: String) -> Result<RulePack, String> {
     Ok(RulePack {
         id: format!("imported_{}", chrono::Local::now().timestamp_millis()),
         name: "Imported from MemoChat".to_string(),
-        description: String::new(),
+        description: "Current memo pack from MemoChat".to_string(),
         author: String::new(),
         version: "1.0.0".to_string(),
-        system_prompt,
+        system_prompt: String::new(),
         rules,
-        tags: vec!["imported".to_string()],
+        memos,
+        tags: vec!["imported".to_string(), "memochat".to_string()],
         created_at: now.clone(),
         updated_at: now,
     })
