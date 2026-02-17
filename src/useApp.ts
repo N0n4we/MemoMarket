@@ -12,6 +12,11 @@ export interface MemoRule {
   updateRule: string;
 }
 
+export interface Memo {
+  title: string;
+  content: string;
+}
+
 export interface RulePack {
   id: string;
   name: string;
@@ -20,6 +25,7 @@ export interface RulePack {
   version: string;
   systemPrompt: string;
   rules: MemoRule[];
+  memos: Memo[];
   tags: string[];
   createdAt: string;
   updatedAt: string;
@@ -45,6 +51,7 @@ function toBackend(pack: RulePack) {
     version: pack.version,
     system_prompt: pack.systemPrompt,
     rules: pack.rules.map(r => ({ title: r.title, update_rule: r.updateRule })),
+    memos: pack.memos.map(m => ({ title: m.title, content: m.content })),
     tags: pack.tags,
     created_at: pack.createdAt,
     updated_at: pack.updatedAt,
@@ -60,6 +67,7 @@ function fromBackend(raw: any): RulePack {
     version: raw.version,
     systemPrompt: raw.system_prompt || "",
     rules: (raw.rules || []).map((r: any) => ({ title: r.title, updateRule: r.update_rule || r.updateRule })),
+    memos: (raw.memos || []).map((m: any) => ({ title: m.title, content: m.content })),
     tags: raw.tags || [],
     createdAt: raw.created_at || "",
     updatedAt: raw.updated_at || "",
@@ -85,7 +93,7 @@ export function useApp() {
   // Create/Edit form
   const editPack = ref<RulePack>({
     id: "", name: "", description: "", author: "", version: "1.0.0",
-    systemPrompt: "", rules: [], tags: [], createdAt: "", updatedAt: "",
+    systemPrompt: "", rules: [], memos: [], tags: [], createdAt: "", updatedAt: "",
   });
 
   // Channels — each channel = one backend server URL + token
@@ -230,7 +238,7 @@ export function useApp() {
   function startCreate() {
     editPack.value = {
       id: generateId(), name: "", description: "", author: "", version: "1.0.0",
-      systemPrompt: "", rules: [], tags: [], createdAt: nowISO(), updatedAt: nowISO(),
+      systemPrompt: "", rules: [], memos: [], tags: [], createdAt: nowISO(), updatedAt: nowISO(),
     };
     currentView.value = "create";
   }
@@ -246,6 +254,14 @@ export function useApp() {
 
   function removeRule(idx: number) {
     editPack.value.rules.splice(idx, 1);
+  }
+
+  function addMemo() {
+    editPack.value.memos.push({ title: "", content: "" });
+  }
+
+  function removeMemo(idx: number) {
+    editPack.value.memos.splice(idx, 1);
   }
 
   function addTag(tag: string) {
@@ -291,16 +307,40 @@ export function useApp() {
     URL.revokeObjectURL(url);
   }
 
-  // Export as full MemoMarket pack
-  function exportPack(pack: RulePack) {
-    const json = JSON.stringify(toBackend(pack), null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${pack.name.replace(/\s+/g, "-").toLowerCase() || "pack"}.memomarket.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // Export pack to a directory chosen by user
+  async function exportPack(pack: RulePack) {
+    try {
+      const json = JSON.stringify(toBackend(pack), null, 2);
+      const filename = `${pack.name.replace(/\s+/g, "-").toLowerCase() || "pack"}.memomarket.json`;
+      await invoke("export_pack", { content: json, filename });
+    } catch (e) {
+      console.error("Failed to export pack:", e);
+    }
+  }
+
+  // Import from MemoChat (reads current RulePack + MemoPack from MemoChat)
+  async function importFromMemoChat() {
+    try {
+      const data = await invoke<{ rules: any; memos: any }>("import_from_memochat");
+      const now = nowISO();
+      const pack: RulePack = {
+        id: generateId(),
+        name: "Imported from MemoChat",
+        description: "Current rules and memos from MemoChat",
+        author: "",
+        version: "1.0.0",
+        systemPrompt: data.rules?.systemPrompt || "",
+        rules: (data.rules?.rules || []).map((r: any) => ({ title: r.title, updateRule: r.updateRule })),
+        memos: (data.memos || []).map((m: any) => ({ title: m.title, content: m.content })),
+        tags: ["imported", "memochat"],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await savePack(pack);
+      await loadPacks();
+    } catch (e) {
+      console.error("Failed to import from MemoChat:", e);
+    }
   }
 
   // Import from file
@@ -327,6 +367,7 @@ export function useApp() {
             version: "1.0.0",
             systemPrompt: data.systemPrompt || "",
             rules: (data.rules || []).map((r: any) => ({ title: r.title, updateRule: r.updateRule })),
+            memos: [],
             tags: ["imported"],
             createdAt: now,
             updatedAt: now,
@@ -518,9 +559,9 @@ export function useApp() {
     settingsBtnRef, settingsTitleRef, settingsBtnRect, settingsTitleRect,
     editPack,
     loadPacks, savePack, deletePack, toggleInstall,
-    startCreate, startEdit, addRule, removeRule, addTag, removeTag,
+    startCreate, startEdit, addRule, removeRule, addMemo, removeMemo, addTag, removeTag,
     saveCurrentPack, viewPack, goBack,
-    exportForMemoChat, exportPack, importPack,
+    exportForMemoChat, exportPack, importPack, importFromMemoChat,
     openSettings, closeSettings,
     // Local / Remote toggle
     viewMode, remotePacks, loadingRemote, fetchRemotePacks,

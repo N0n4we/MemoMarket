@@ -76,34 +76,6 @@ func main() {
 		}
 	})
 
-	// Memo Packs — route by method
-	mux.HandleFunc("/api/memo-packs", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			handleListMemoPacks(w, r)
-		case http.MethodPost:
-			authMiddleware(handlePublishMemoPack)(w, r)
-		default:
-			writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
-		}
-	})
-	mux.HandleFunc("/api/memo-packs/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/download") {
-			handleDownloadMemoPack(w, r)
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			handleGetMemoPack(w, r)
-		case http.MethodPut:
-			authMiddleware(handleUpdateMemoPack)(w, r)
-		case http.MethodDelete:
-			authMiddleware(handleDeleteMemoPack)(w, r)
-		default:
-			writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
-		}
-	})
-
 	// Server info update (admin-like, auth required)
 	mux.HandleFunc("/api/info/update", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {

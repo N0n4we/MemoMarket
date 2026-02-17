@@ -97,6 +97,7 @@ func handlePublishRulePack(w http.ResponseWriter, r *http.Request) {
 		Version:      req.Version,
 		SystemPrompt: req.SystemPrompt,
 		Rules:        req.Rules,
+		Memos:        req.Memos,
 		Tags:         req.Tags,
 		Downloads:    0,
 		Published:    true,
@@ -105,6 +106,9 @@ func handlePublishRulePack(w http.ResponseWriter, r *http.Request) {
 	}
 	if pack.Rules == nil {
 		pack.Rules = []MemoRule{}
+	}
+	if pack.Memos == nil {
+		pack.Memos = []Memo{}
 	}
 	if pack.Tags == nil {
 		pack.Tags = []string{}
@@ -151,9 +155,13 @@ func handleUpdateRulePack(w http.ResponseWriter, r *http.Request) {
 	existing.Version = req.Version
 	existing.SystemPrompt = req.SystemPrompt
 	existing.Rules = req.Rules
+	existing.Memos = req.Memos
 	existing.Tags = req.Tags
 	if existing.Rules == nil {
 		existing.Rules = []MemoRule{}
+	}
+	if existing.Memos == nil {
+		existing.Memos = []Memo{}
 	}
 	if existing.Tags == nil {
 		existing.Tags = []string{}

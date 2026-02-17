@@ -9,9 +9,9 @@ const {
   settingsBtnRef, settingsTitleRef, settingsBtnRect, settingsTitleRect,
   editPack,
   deletePack, toggleInstall,
-  startCreate, startEdit, addRule, removeRule, addTag, removeTag,
+  startCreate, startEdit, addRule, removeRule, addMemo, removeMemo, addTag, removeTag,
   saveCurrentPack, viewPack, goBack,
-  exportForMemoChat, exportPack, importPack,
+  exportForMemoChat, exportPack, importPack, importFromMemoChat,
   openSettings, closeSettings,
   // Local / Remote toggle
   viewMode, loadingRemote,
@@ -56,7 +56,8 @@ function handleRegister() {
         </div>
       </div>
       <div class="header-actions">
-        <button class="action-btn" @click="importPack">Import</button>
+        <button class="action-btn" @click="importPack">Import Pack</button>
+        <button class="action-btn" @click="importFromMemoChat">Import from MemoChat</button>
         <button class="action-btn primary" @click="startCreate">+ New Pack</button>
         <button
           ref="settingsBtnRef"
@@ -114,7 +115,6 @@ function handleRegister() {
       <div class="detail-header">
         <button class="back-btn" @click="goBack">&larr; Back</button>
         <div class="detail-actions">
-          <button class="action-btn" @click="exportForMemoChat(selectedPack!)">Export for MemoChat</button>
           <button class="action-btn" @click="exportPack(selectedPack!)">Export Pack</button>
           <button class="action-btn publish-btn" @click="openPublish(selectedPack!)">Publish</button>
           <button class="action-btn" @click="startEdit(selectedPack!)">Edit</button>
@@ -141,10 +141,18 @@ function handleRegister() {
           <div class="code-block">{{ selectedPack.systemPrompt }}</div>
         </div>
         <div class="detail-section">
-          <h3>Rules</h3>
+          <h3>Rules ({{ selectedPack.rules.length }})</h3>
           <div v-for="(rule, idx) in selectedPack.rules" :key="idx" class="rule-card">
             <div class="rule-title">{{ rule.title || 'Untitled' }}</div>
             <div class="rule-update">{{ rule.updateRule }}</div>
+          </div>
+          <div v-if="selectedPack.rules.length === 0" class="empty-hint">No rules</div>
+        </div>
+        <div v-if="selectedPack.memos.length > 0" class="detail-section">
+          <h3>Memos ({{ selectedPack.memos.length }})</h3>
+          <div v-for="(memo, idx) in selectedPack.memos" :key="idx" class="memo-card">
+            <div class="memo-title">{{ memo.title || 'Untitled' }}</div>
+            <div class="memo-content">{{ memo.content }}</div>
           </div>
         </div>
       </div>
@@ -196,6 +204,21 @@ function handleRegister() {
             <div class="form-group"><label>Update Rule</label><input type="text" v-model="rule.updateRule" placeholder="How to update this memo..." /></div>
           </div>
           <button v-if="editPack.rules.length === 0" class="empty-add-btn" @click="addRule">+ Add your first rule</button>
+        </div>
+        <div class="memos-section">
+          <div class="section-header">
+            <h3>Memos ({{ editPack.memos.length }})</h3>
+            <button class="action-btn" @click="addMemo">+ Add Memo</button>
+          </div>
+          <div v-for="(memo, idx) in editPack.memos" :key="idx" class="memo-edit-card">
+            <div class="memo-edit-header">
+              <span class="memo-num">#{{ idx + 1 }}</span>
+              <button class="remove-btn" @click="removeMemo(idx)">&times;</button>
+            </div>
+            <div class="form-group"><label>Title</label><input type="text" v-model="memo.title" placeholder="Memo title..." /></div>
+            <div class="form-group"><label>Content</label><textarea v-model="memo.content" placeholder="Memo content..." rows="3"></textarea></div>
+          </div>
+          <button v-if="editPack.memos.length === 0" class="empty-add-btn" @click="addMemo">+ Add your first memo</button>
         </div>
       </div>
     </div>

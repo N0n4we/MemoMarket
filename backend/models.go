@@ -2,13 +2,20 @@ package main
 
 import "encoding/json"
 
-// MemoRule represents a single rule within a RulePack.
+// MemoRule represents a single rule within a Pack.
 type MemoRule struct {
 	Title      string `json:"title"`
 	UpdateRule string `json:"update_rule"`
 }
 
-// RulePack is a publishable collection of memo rules.
+// Memo represents a single memo entry.
+type Memo struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+// RulePack is a unified publishable pack containing both rules and memos.
+// (Renamed from RulePack but now includes memos too)
 type RulePack struct {
 	ID           string     `json:"id"`
 	Name         string     `json:"name"`
@@ -18,33 +25,12 @@ type RulePack struct {
 	Version      string     `json:"version"`
 	SystemPrompt string     `json:"system_prompt"`
 	Rules        []MemoRule `json:"rules"`
+	Memos        []Memo     `json:"memos"`
 	Tags         []string   `json:"tags"`
 	Downloads    int        `json:"downloads"`
 	Published    bool       `json:"published"`
 	CreatedAt    string     `json:"created_at"`
 	UpdatedAt    string     `json:"updated_at"`
-}
-
-// Memo represents a single memo entry.
-type Memo struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
-}
-
-// MemoPack is a publishable collection of memos.
-type MemoPack struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	AuthorID    string   `json:"author_id"`
-	AuthorName  string   `json:"author_name"`
-	Version     string   `json:"version"`
-	Memos       []Memo   `json:"memos"`
-	Tags        []string `json:"tags"`
-	Downloads   int      `json:"downloads"`
-	Published   bool     `json:"published"`
-	CreatedAt   string   `json:"created_at"`
-	UpdatedAt   string   `json:"updated_at"`
 }
 
 // User represents a registered publisher.
@@ -70,15 +56,8 @@ type PublishRulePackReq struct {
 	Version      string     `json:"version"`
 	SystemPrompt string     `json:"system_prompt"`
 	Rules        []MemoRule `json:"rules"`
+	Memos        []Memo     `json:"memos"`
 	Tags         []string   `json:"tags"`
-}
-
-type PublishMemoPackReq struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Version     string   `json:"version"`
-	Memos       []Memo   `json:"memos"`
-	Tags        []string `json:"tags"`
 }
 
 type RegisterReq struct {
