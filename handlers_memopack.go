@@ -5,14 +5,14 @@ import (
 	"strings"
 )
 
-// GET /api/rule-packs — list published rule packs (public).
-func handleListRulePacks(w http.ResponseWriter, r *http.Request) {
+// GET /api/memo-packs — list published memo packs (public).
+func handleListMemoPacks(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		return
 	}
 	q := parseListQuery(r)
-	packs, total, err := ListRulePacks(q)
+	packs, total, err := ListMemoPacks(q)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to list packs"})
 		return
@@ -20,18 +20,18 @@ func handleListRulePacks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ListResponse{Items: packs, Total: total, Page: q.Page, Limit: q.Limit})
 }
 
-// GET /api/rule-packs/{id} — get a single rule pack (public).
-func handleGetRulePack(w http.ResponseWriter, r *http.Request) {
+// GET /api/memo-packs/{id} — get a single memo pack (public).
+func handleGetMemoPack(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		return
 	}
-	id := extractID(r.URL.Path, "/api/rule-packs/")
+	id := extractID(r.URL.Path, "/api/memo-packs/")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "missing pack id"})
 		return
 	}
-	pack, err := GetRulePack(id)
+	pack, err := GetMemoPack(id)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "pack not found"})
 		return
@@ -39,31 +39,30 @@ func handleGetRulePack(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pack)
 }
 
-// GET /api/rule-packs/{id}/download — download (increment counter + return pack).
-func handleDownloadRulePack(w http.ResponseWriter, r *http.Request) {
+// GET /api/memo-packs/{id}/download — download (increment counter + return pack).
+func handleDownloadMemoPack(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		return
 	}
-	// path: /api/rule-packs/{id}/download
-	path := strings.TrimPrefix(r.URL.Path, "/api/rule-packs/")
+	path := strings.TrimPrefix(r.URL.Path, "/api/memo-packs/")
 	id := strings.TrimSuffix(path, "/download")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "missing pack id"})
 		return
 	}
-	pack, err := GetRulePack(id)
+	pack, err := GetMemoPack(id)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "pack not found"})
 		return
 	}
-	IncrementRulePackDownloads(id)
+	IncrementMemoPackDownloads(id)
 	pack.Downloads++
 	writeJSON(w, http.StatusOK, pack)
 }
 
-// POST /api/rule-packs — publish a new rule pack (auth required).
-func handlePublishRulePack(w http.ResponseWriter, r *http.Request) {
+// POST /api/memo-packs — publish a new memo pack (auth required).
+func handlePublishMemoPack(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		return
@@ -74,7 +73,7 @@ func handlePublishRulePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req PublishRulePackReq
+	var req PublishMemoPackReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON"})
 		return
@@ -88,7 +87,7 @@ func handlePublishRulePack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := nowISO()
-	pack := &RulePack{
+	pack := &MemoPack{
 		ID:           newID(),
 		Name:         req.Name,
 		Description:  req.Description,
@@ -114,15 +113,15 @@ func handlePublishRulePack(w http.ResponseWriter, r *http.Request) {
 		pack.Tags = []string{}
 	}
 
-	if err := InsertRulePack(pack); err != nil {
+	if err := InsertMemoPack(pack); err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to publish"})
 		return
 	}
 	writeJSON(w, http.StatusCreated, pack)
 }
 
-// PUT /api/rule-packs/{id} — update own rule pack (auth required).
-func handleUpdateRulePack(w http.ResponseWriter, r *http.Request) {
+// PUT /api/memo-packs/{id} — update own memo pack (auth required).
+func handleUpdateMemoPack(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		return
@@ -133,8 +132,8 @@ func handleUpdateRulePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := extractID(r.URL.Path, "/api/rule-packs/")
-	existing, err := GetRulePack(id)
+	id := extractID(r.URL.Path, "/api/memo-packs/")
+	existing, err := GetMemoPack(id)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "pack not found"})
 		return
@@ -144,7 +143,7 @@ func handleUpdateRulePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req PublishRulePackReq
+	var req PublishMemoPackReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON"})
 		return
@@ -167,15 +166,15 @@ func handleUpdateRulePack(w http.ResponseWriter, r *http.Request) {
 		existing.Tags = []string{}
 	}
 
-	if err := UpdateRulePack(existing); err != nil {
+	if err := UpdateMemoPack(existing); err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update"})
 		return
 	}
 	writeJSON(w, http.StatusOK, existing)
 }
 
-// DELETE /api/rule-packs/{id} — delete own rule pack (auth required).
-func handleDeleteRulePack(w http.ResponseWriter, r *http.Request) {
+// DELETE /api/memo-packs/{id} — delete own memo pack (auth required).
+func handleDeleteMemoPack(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		return
@@ -186,8 +185,8 @@ func handleDeleteRulePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := extractID(r.URL.Path, "/api/rule-packs/")
-	existing, err := GetRulePack(id)
+	id := extractID(r.URL.Path, "/api/memo-packs/")
+	existing, err := GetMemoPack(id)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "pack not found"})
 		return
@@ -197,7 +196,7 @@ func handleDeleteRulePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := DeleteRulePack(id, user.ID); err != nil {
+	if err := DeleteMemoPack(id, user.ID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to delete"})
 		return
 	}
@@ -206,7 +205,6 @@ func handleDeleteRulePack(w http.ResponseWriter, r *http.Request) {
 
 func extractID(path, prefix string) string {
 	s := strings.TrimPrefix(path, prefix)
-	// remove trailing slash or sub-paths
 	if idx := strings.Index(s, "/"); idx >= 0 {
 		s = s[:idx]
 	}

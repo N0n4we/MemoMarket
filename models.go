@@ -14,9 +14,8 @@ type Memo struct {
 	Content string `json:"content"`
 }
 
-// RulePack is a unified publishable pack containing both rules and memos.
-// (Renamed from RulePack but now includes memos too)
-type RulePack struct {
+// MemoPack is a publishable pack containing rules and memos.
+type MemoPack struct {
 	ID           string     `json:"id"`
 	Name         string     `json:"name"`
 	Description  string     `json:"description"`
@@ -50,7 +49,7 @@ type ServerInfo struct {
 
 // --- Request / Response types ---
 
-type PublishRulePackReq struct {
+type PublishMemoPackReq struct {
 	Name         string     `json:"name"`
 	Description  string     `json:"description"`
 	Version      string     `json:"version"`
@@ -74,10 +73,10 @@ type ListQuery struct {
 }
 
 type ListResponse struct {
-	Items interface{} `json:"items"`
-	Total int         `json:"total"`
-	Page  int         `json:"page"`
-	Limit int         `json:"limit"`
+	Items any `json:"items"`
+	Total int `json:"total"`
+	Page  int `json:"page"`
+	Limit int `json:"limit"`
 }
 
 type ErrorResponse struct {

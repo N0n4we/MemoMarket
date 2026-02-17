@@ -6,12 +6,36 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-// Server metadata — configurable via env vars.
+// Server metadata — loaded from config file, env vars as fallback.
 var serverName = "MemoMarket"
 var serverDescription = ""
+
+func loadServerConfig(dataDir string) {
+	configPath := filepath.Join(dataDir, "config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		// No config file yet — create one from env vars / defaults
+		saveServerConfig(dataDir)
+		return
+	}
+	var info ServerInfo
+	if err := json.Unmarshal(data, &info); err == nil {
+		if info.Name != "" {
+			serverName = info.Name
+		}
+		serverDescription = info.Description
+	}
+}
+
+func saveServerConfig(dataDir string) {
+	configPath := filepath.Join(dataDir, "config.json")
+	data, _ := json.MarshalIndent(ServerInfo{Name: serverName, Description: serverDescription}, "", "  ")
+	os.WriteFile(configPath, data, 0644)
+}
 
 func main() {
 	port := os.Getenv("PORT")
@@ -29,6 +53,8 @@ func main() {
 		serverDescription = d
 	}
 
+	os.MkdirAll(dataDir, 0755)
+	loadServerConfig(dataDir)
 	InitDB(dataDir)
 	log.Printf("MemoMarket backend starting on :%s (data: %s)", port, dataDir)
 
@@ -48,51 +74,33 @@ func main() {
 	mux.HandleFunc("/api/register", handleRegister)
 	mux.HandleFunc("/api/me", authMiddleware(handleMe))
 
-	// Rule Packs — route by method
-	mux.HandleFunc("/api/rule-packs", func(w http.ResponseWriter, r *http.Request) {
+	// Memo Packs — route by method
+	mux.HandleFunc("/api/memo-packs", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			handleListRulePacks(w, r)
+			handleListMemoPacks(w, r)
 		case http.MethodPost:
-			authMiddleware(handlePublishRulePack)(w, r)
+			authMiddleware(handlePublishMemoPack)(w, r)
 		default:
 			writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		}
 	})
-	mux.HandleFunc("/api/rule-packs/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/memo-packs/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/download") {
-			handleDownloadRulePack(w, r)
+			handleDownloadMemoPack(w, r)
 			return
 		}
 		switch r.Method {
 		case http.MethodGet:
-			handleGetRulePack(w, r)
+			handleGetMemoPack(w, r)
 		case http.MethodPut:
-			authMiddleware(handleUpdateRulePack)(w, r)
+			authMiddleware(handleUpdateMemoPack)(w, r)
 		case http.MethodDelete:
-			authMiddleware(handleDeleteRulePack)(w, r)
+			authMiddleware(handleDeleteMemoPack)(w, r)
 		default:
 			writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		}
 	})
-
-	// Server info update (admin-like, auth required)
-	mux.HandleFunc("/api/info/update", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut {
-			writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
-			return
-		}
-		var info ServerInfo
-		if err := json.NewDecoder(r.Body).Decode(&info); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON"})
-			return
-		}
-		if info.Name != "" {
-			serverName = info.Name
-		}
-		serverDescription = info.Description
-		writeJSON(w, http.StatusOK, ServerInfo{Name: serverName, Description: serverDescription})
-	}))
 
 	handler := corsMiddleware(mux)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), handler))
