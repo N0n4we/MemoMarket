@@ -82,9 +82,6 @@ func handlePublishMemoPack(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "name is required"})
 		return
 	}
-	if req.Version == "" {
-		req.Version = "1.0.0"
-	}
 
 	now := nowISO()
 	pack := &MemoPack{
@@ -93,11 +90,9 @@ func handlePublishMemoPack(w http.ResponseWriter, r *http.Request) {
 		Description:  req.Description,
 		AuthorID:     user.ID,
 		AuthorName:   user.DisplayName,
-		Version:      req.Version,
 		SystemPrompt: req.SystemPrompt,
 		Rules:        req.Rules,
 		Memos:        req.Memos,
-		Tags:         req.Tags,
 		Downloads:    0,
 		Published:    true,
 		CreatedAt:    now,
@@ -108,9 +103,6 @@ func handlePublishMemoPack(w http.ResponseWriter, r *http.Request) {
 	}
 	if pack.Memos == nil {
 		pack.Memos = []Memo{}
-	}
-	if pack.Tags == nil {
-		pack.Tags = []string{}
 	}
 
 	if err := InsertMemoPack(pack); err != nil {
@@ -151,19 +143,14 @@ func handleUpdateMemoPack(w http.ResponseWriter, r *http.Request) {
 
 	existing.Name = req.Name
 	existing.Description = req.Description
-	existing.Version = req.Version
 	existing.SystemPrompt = req.SystemPrompt
 	existing.Rules = req.Rules
 	existing.Memos = req.Memos
-	existing.Tags = req.Tags
 	if existing.Rules == nil {
 		existing.Rules = []MemoRule{}
 	}
 	if existing.Memos == nil {
 		existing.Memos = []Memo{}
-	}
-	if existing.Tags == nil {
-		existing.Tags = []string{}
 	}
 
 	if err := UpdateMemoPack(existing); err != nil {

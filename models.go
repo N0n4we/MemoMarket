@@ -21,11 +21,9 @@ type MemoPack struct {
 	Description  string     `json:"description"`
 	AuthorID     string     `json:"author_id"`
 	AuthorName   string     `json:"author_name"`
-	Version      string     `json:"version"`
 	SystemPrompt string     `json:"system_prompt"`
 	Rules        []MemoRule `json:"rules"`
 	Memos        []Memo     `json:"memos"`
-	Tags         []string   `json:"tags"`
 	Downloads    int        `json:"downloads"`
 	Published    bool       `json:"published"`
 	CreatedAt    string     `json:"created_at"`
@@ -52,11 +50,9 @@ type ServerInfo struct {
 type PublishMemoPackReq struct {
 	Name         string     `json:"name"`
 	Description  string     `json:"description"`
-	Version      string     `json:"version"`
 	SystemPrompt string     `json:"system_prompt"`
 	Rules        []MemoRule `json:"rules"`
 	Memos        []Memo     `json:"memos"`
-	Tags         []string   `json:"tags"`
 }
 
 type RegisterReq struct {
@@ -66,7 +62,6 @@ type RegisterReq struct {
 
 type ListQuery struct {
 	Search string
-	Tag    string
 	Author string
 	Page   int
 	Limit  int
@@ -111,21 +106,4 @@ func UnmarshalMemos(s string) []Memo {
 		memos = []Memo{}
 	}
 	return memos
-}
-
-func MarshalTags(tags []string) string {
-	if tags == nil {
-		tags = []string{}
-	}
-	b, _ := json.Marshal(tags)
-	return string(b)
-}
-
-func UnmarshalTags(s string) []string {
-	var tags []string
-	json.Unmarshal([]byte(s), &tags)
-	if tags == nil {
-		tags = []string{}
-	}
-	return tags
 }

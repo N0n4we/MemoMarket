@@ -82,7 +82,6 @@ func decodeJSON(r *http.Request, v interface{}) error {
 func parseListQuery(r *http.Request) ListQuery {
 	q := ListQuery{
 		Search: r.URL.Query().Get("search"),
-		Tag:    r.URL.Query().Get("tag"),
 		Author: r.URL.Query().Get("author"),
 		Page:   1,
 		Limit:  20,

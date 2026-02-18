@@ -48,11 +48,9 @@ func migrate() {
 		description TEXT NOT NULL DEFAULT '',
 		author_id TEXT NOT NULL,
 		author_name TEXT NOT NULL DEFAULT '',
-		version TEXT NOT NULL DEFAULT '1.0.0',
 		system_prompt TEXT NOT NULL DEFAULT '',
 		rules TEXT NOT NULL DEFAULT '[]',
 		memos TEXT NOT NULL DEFAULT '[]',
-		tags TEXT NOT NULL DEFAULT '[]',
 		downloads INTEGER NOT NULL DEFAULT 0,
 		published INTEGER NOT NULL DEFAULT 1,
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -120,10 +118,10 @@ func GetUserByID(id string) (*User, error) {
 
 func InsertMemoPack(mp *MemoPack) error {
 	_, err := db.Exec(
-		`INSERT INTO memo_packs (id, name, description, author_id, author_name, version, system_prompt, rules, memos, tags, downloads, published, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		mp.ID, mp.Name, mp.Description, mp.AuthorID, mp.AuthorName, mp.Version,
-		mp.SystemPrompt, MarshalRules(mp.Rules), MarshalMemos(mp.Memos), MarshalTags(mp.Tags),
+		`INSERT INTO memo_packs (id, name, description, author_id, author_name, system_prompt, rules, memos, downloads, published, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		mp.ID, mp.Name, mp.Description, mp.AuthorID, mp.AuthorName,
+		mp.SystemPrompt, MarshalRules(mp.Rules), MarshalMemos(mp.Memos),
 		mp.Downloads, boolToInt(mp.Published), mp.CreatedAt, mp.UpdatedAt,
 	)
 	return err
@@ -131,10 +129,10 @@ func InsertMemoPack(mp *MemoPack) error {
 
 func UpdateMemoPack(mp *MemoPack) error {
 	_, err := db.Exec(
-		`UPDATE memo_packs SET name=?, description=?, version=?, system_prompt=?, rules=?, memos=?, tags=?, published=?, updated_at=?
+		`UPDATE memo_packs SET name=?, description=?, system_prompt=?, rules=?, memos=?, published=?, updated_at=?
 		 WHERE id=? AND author_id=?`,
-		mp.Name, mp.Description, mp.Version, mp.SystemPrompt,
-		MarshalRules(mp.Rules), MarshalMemos(mp.Memos), MarshalTags(mp.Tags), boolToInt(mp.Published), nowISO(),
+		mp.Name, mp.Description, mp.SystemPrompt,
+		MarshalRules(mp.Rules), MarshalMemos(mp.Memos), boolToInt(mp.Published), nowISO(),
 		mp.ID, mp.AuthorID,
 	)
 	return err
@@ -147,19 +145,18 @@ func DeleteMemoPack(id, authorID string) error {
 
 func GetMemoPack(id string) (*MemoPack, error) {
 	var mp MemoPack
-	var rulesJSON, memosJSON, tagsJSON string
+	var rulesJSON, memosJSON string
 	var published int
 	err := db.QueryRow(
-		`SELECT id, name, description, author_id, author_name, version, system_prompt, rules, memos, tags, downloads, published, created_at, updated_at
+		`SELECT id, name, description, author_id, author_name, system_prompt, rules, memos, downloads, published, created_at, updated_at
 		 FROM memo_packs WHERE id=?`, id,
-	).Scan(&mp.ID, &mp.Name, &mp.Description, &mp.AuthorID, &mp.AuthorName, &mp.Version,
-		&mp.SystemPrompt, &rulesJSON, &memosJSON, &tagsJSON, &mp.Downloads, &published, &mp.CreatedAt, &mp.UpdatedAt)
+	).Scan(&mp.ID, &mp.Name, &mp.Description, &mp.AuthorID, &mp.AuthorName,
+		&mp.SystemPrompt, &rulesJSON, &memosJSON, &mp.Downloads, &published, &mp.CreatedAt, &mp.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	mp.Rules = UnmarshalRules(rulesJSON)
 	mp.Memos = UnmarshalMemos(memosJSON)
-	mp.Tags = UnmarshalTags(tagsJSON)
 	mp.Published = published == 1
 	return &mp, nil
 }
@@ -172,10 +169,6 @@ func ListMemoPacks(q ListQuery) ([]MemoPack, int, error) {
 		where = append(where, "(name LIKE ? OR description LIKE ? OR author_name LIKE ?)")
 		s := "%" + q.Search + "%"
 		args = append(args, s, s, s)
-	}
-	if q.Tag != "" {
-		where = append(where, "tags LIKE ?")
-		args = append(args, "%\""+q.Tag+"\"%")
 	}
 	if q.Author != "" {
 		where = append(where, "author_id = ?")
@@ -192,7 +185,7 @@ func ListMemoPacks(q ListQuery) ([]MemoPack, int, error) {
 
 	offset := (q.Page - 1) * q.Limit
 	rows, err := db.Query(
-		"SELECT id, name, description, author_id, author_name, version, system_prompt, rules, memos, tags, downloads, published, created_at, updated_at FROM memo_packs WHERE "+whereClause+" ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+		"SELECT id, name, description, author_id, author_name, system_prompt, rules, memos, downloads, published, created_at, updated_at FROM memo_packs WHERE "+whereClause+" ORDER BY updated_at DESC LIMIT ? OFFSET ?",
 		append(args, q.Limit, offset)...,
 	)
 	if err != nil {
@@ -203,13 +196,12 @@ func ListMemoPacks(q ListQuery) ([]MemoPack, int, error) {
 	var packs []MemoPack
 	for rows.Next() {
 		var mp MemoPack
-		var rulesJSON, memosJSON, tagsJSON string
+		var rulesJSON, memosJSON string
 		var published int
-		rows.Scan(&mp.ID, &mp.Name, &mp.Description, &mp.AuthorID, &mp.AuthorName, &mp.Version,
-			&mp.SystemPrompt, &rulesJSON, &memosJSON, &tagsJSON, &mp.Downloads, &published, &mp.CreatedAt, &mp.UpdatedAt)
+		rows.Scan(&mp.ID, &mp.Name, &mp.Description, &mp.AuthorID, &mp.AuthorName,
+			&mp.SystemPrompt, &rulesJSON, &memosJSON, &mp.Downloads, &published, &mp.CreatedAt, &mp.UpdatedAt)
 		mp.Rules = UnmarshalRules(rulesJSON)
 		mp.Memos = UnmarshalMemos(memosJSON)
-		mp.Tags = UnmarshalTags(tagsJSON)
 		mp.Published = published == 1
 		packs = append(packs, mp)
 	}
