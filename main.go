@@ -72,6 +72,7 @@ func main() {
 
 	// Auth
 	mux.HandleFunc("/api/register", handleRegister)
+	mux.HandleFunc("/api/login", handleLogin)
 	mux.HandleFunc("/api/me", authMiddleware(handleMe))
 
 	// Memo Packs — route by method

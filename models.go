@@ -32,11 +32,11 @@ type MemoPack struct {
 
 // User represents a registered publisher.
 type User struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Token       string `json:"token,omitempty"`
-	CreatedAt   string `json:"created_at"`
+	ID           string `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"`
+	Token        string `json:"token,omitempty"`
+	CreatedAt    string `json:"created_at"`
 }
 
 // ServerInfo describes this backend node (each node = one channel).
@@ -56,8 +56,13 @@ type PublishMemoPackReq struct {
 }
 
 type RegisterReq struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type LoginReq struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type ListQuery struct {

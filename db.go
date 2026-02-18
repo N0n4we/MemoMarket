@@ -37,7 +37,7 @@ func migrate() {
 	CREATE TABLE IF NOT EXISTS users (
 		id TEXT PRIMARY KEY,
 		username TEXT UNIQUE NOT NULL,
-		display_name TEXT NOT NULL DEFAULT '',
+		password_hash TEXT NOT NULL,
 		token TEXT UNIQUE NOT NULL,
 		created_at TEXT NOT NULL DEFAULT (datetime('now'))
 	);
@@ -77,26 +77,29 @@ func newID() string {
 
 // ---- User DB operations ----
 
-func CreateUser(username, displayName string) (*User, error) {
+func CreateUser(username, passwordHash string) (*User, error) {
 	id := newID()
 	token := uuid.New().String()
 	now := nowISO()
 
 	_, err := db.Exec(
-		`INSERT INTO users (id, username, display_name, token, created_at) VALUES (?, ?, ?, ?, ?)`,
-		id, username, displayName, token, now,
+		`INSERT INTO users (id, username, password_hash, token, created_at) VALUES (?, ?, ?, ?, ?)`,
+		id, username, passwordHash, token, now,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("username already taken")
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			return nil, fmt.Errorf("username already taken")
+		}
+		return nil, fmt.Errorf("failed to create user: %v", err)
 	}
-	return &User{ID: id, Username: username, DisplayName: displayName, Token: token, CreatedAt: now}, nil
+	return &User{ID: id, Username: username, Token: token, CreatedAt: now}, nil
 }
 
 func GetUserByToken(token string) (*User, error) {
 	var u User
 	err := db.QueryRow(
-		`SELECT id, username, display_name, token, created_at FROM users WHERE token = ?`, token,
-	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Token, &u.CreatedAt)
+		`SELECT id, username, token, created_at FROM users WHERE token = ?`, token,
+	).Scan(&u.ID, &u.Username, &u.Token, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -106,8 +109,19 @@ func GetUserByToken(token string) (*User, error) {
 func GetUserByID(id string) (*User, error) {
 	var u User
 	err := db.QueryRow(
-		`SELECT id, username, display_name, '', created_at FROM users WHERE id = ?`, id,
-	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Token, &u.CreatedAt)
+		`SELECT id, username, '', created_at FROM users WHERE id = ?`, id,
+	).Scan(&u.ID, &u.Username, &u.Token, &u.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func GetUserByUsername(username string) (*User, error) {
+	var u User
+	err := db.QueryRow(
+		`SELECT id, username, password_hash, token, created_at FROM users WHERE username = ?`, username,
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Token, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

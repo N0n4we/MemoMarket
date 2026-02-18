@@ -89,7 +89,7 @@ func handlePublishMemoPack(w http.ResponseWriter, r *http.Request) {
 		Name:         req.Name,
 		Description:  req.Description,
 		AuthorID:     user.ID,
-		AuthorName:   user.DisplayName,
+		AuthorName:   user.Username,
 		SystemPrompt: req.SystemPrompt,
 		Rules:        req.Rules,
 		Memos:        req.Memos,
